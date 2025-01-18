@@ -15,17 +15,17 @@ TargetHost = namedtuple('TargetHost', ['host', 'port', 'mac', 'ssh_cmd'])
 
 class ProxyWOL:
     target: TargetHost
-    _app: web.Application
+    app: web.Application
     _last_wake_up_time = 0
 
     def __init__(self, target: TargetHost):
         self.target = target
-        self._app = web.Application()
+        self.app = web.Application()
         for method in ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'CONNECT', 'HEAD']:
-            self._app.router.add_route(method, '/{tail:.*}', self.handle_http_proxy)  # 支持 GET 请求的反向代理
+            self.app.router.add_route(method, '/{tail:.*}', self.handle_http_proxy)  # 支持 GET 请求的反向代理
 
     def run(self, host='0.0.0.0', port=8080):
-        web.run_app(self._app, host=host, port=port)
+        web.run_app(self.app, host=host, port=port)
 
     async def _wakeup_and_keep(self):
         now = time.time()
@@ -108,6 +108,12 @@ class ProxyWOL:
         return req_ws
 
 
+proxy = ProxyWOL(TargetHost('arch.tt', 8080, '7c:10:c9:9e:13:26', 'ssh kai@arch.tt'))
+
+
+async def get_app():
+    return proxy.app
+
+
 if __name__ == '__main__':
-    ProxyWOL(TargetHost('arch.tt', 8080, '7c:10:c9:9e:13:26', 'ssh kai@arch.tt')) \
-        .run('0.0.0.0', 8080)
+    proxy.run('0.0.0.0', 8080)
