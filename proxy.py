@@ -1,16 +1,35 @@
 import asyncio
 import logging
+import os
 import time
 from collections import namedtuple
-from typing import Union
 
 import aiohttp
-from aiohttp import web, WSMessage, ClientWebSocketResponse, ClientConnectionResetError
+from aiohttp import web, WSMessage, ClientWebSocketResponse, ClientConnectorError
 from aiohttp.web_request import Request
+from aiohttp.web_runner import AppRunner
 from aiohttp.web_ws import WebSocketResponse
 from wakeonlan import send_magic_packet
 
 TargetHost = namedtuple('TargetHost', ['host', 'port', 'mac', 'ssh_cmd'])
+type WebSocket = WebSocketResponse | ClientWebSocketResponse
+
+logger = logging.Logger('proxy-wol', logging.DEBUG)
+
+
+async def pipe_ws(from_ws: WebSocket, to_ws: WebSocket):
+    async for msg in from_ws:
+        msg: WSMessage
+        if msg.type == aiohttp.WSMsgType.TEXT:
+            await to_ws.send_str(msg.data)
+        elif msg.type == aiohttp.WSMsgType.BINARY:
+            await to_ws.send_bytes(msg.data)
+        elif msg.type == aiohttp.WSMsgType.CLOSE:
+            await to_ws.close()
+
+
+async def join_ws(ws1: WebSocket, ws2: WebSocket):
+    await asyncio.gather(pipe_ws(ws1, ws2), pipe_ws(ws2, ws1))
 
 
 class ProxyWOL:
@@ -22,10 +41,14 @@ class ProxyWOL:
         self.target = target
         self.app = web.Application()
         for method in ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'CONNECT', 'HEAD']:
-            self.app.router.add_route(method, '/{tail:.*}', self.handle_http_proxy)  # 支持 GET 请求的反向代理
+            self.app.router.add_route(method, '/{tail:.*}', self.handle_http)
 
-    def run(self, host='0.0.0.0', port=8080):
-        web.run_app(self.app, host=host, port=port)
+    async def serve(self, host='0.0.0.0', port=8080):
+        runner = AppRunner(self.app)
+        await runner.setup()
+        site = web.TCPSite(runner, host, port)
+        await site.start()
+        logger.warning(f'Listening at http://{host}:{port}. Upstream is http://{self.target.host}:{self.target.port}')
 
     async def _wakeup_and_keep(self):
         now = time.time()
@@ -35,7 +58,7 @@ class ProxyWOL:
         self._last_wake_up_time = now
         # noinspection PyAsyncCall
         asyncio.create_task(self._keep_wake_up())
-        logging.info('send wol and keep wake up')
+        logger.info('send wol and keep wake up')
 
     async def _keep_wake_up(self):
         proc = await asyncio.create_subprocess_shell(
@@ -48,72 +71,57 @@ class ProxyWOL:
         upgrade_header = request.headers.get('Upgrade', '').lower()
         return upgrade_header == 'websocket'
 
-    async def handle_http_proxy(self, request: Request):
-        await self._wakeup_and_keep()
-
-        if self.is_websocket_upgrade(request):
-            # 如果是 WebSocket 升级请求，处理为 WebSocket
-            return await self.handle_ws_proxy(request)
-
-        # 否则，转发普通 HTTP 请求
+    async def handle_http(self, request: Request):
         target_url = f"http://{self.target.host}:{self.target.port}{request.rel_url}"
-
+        await self._wakeup_and_keep()
         async with aiohttp.ClientSession() as session:
             req_headers = request.headers.copy()
             req_headers['Accept-Encoding'] = ''
-            async with session.request(request.method,
-                                       target_url,
-                                       headers=req_headers,
-                                       params=request.query,
-                                       data=await request.read()
-                                       ) as resp:
-                resp_headers = resp.headers.copy()
-                # if resp_headers['Content-Encoding']:
-                #     del resp_headers['Content-Encoding']
-                return web.Response(status=resp.status,
-                                    headers=resp_headers,
-                                    body=await resp.read())
-
-    async def handle_ws_proxy(self, request: Request):
-        req_ws = web.WebSocketResponse()
-        await req_ws.prepare(request)  # 升级为ws
-
-        target_url = f'http://{self.target.host}:{self.target.port}{request.path_qs}'
-        try:
-            session = aiohttp.ClientSession()
-            target_ws = await session.ws_connect(target_url, headers=request.headers)
-        except Exception as e:
-            logging.error(f'connect {target_url} failed', type(e), e)
-            await req_ws.close()
-            return
-
-        async def join(from_ws: Union[WebSocketResponse, ClientWebSocketResponse],
-                       to_ws: Union[WebSocketResponse, ClientWebSocketResponse]):
             try:
-                async for msg in from_ws:
-                    msg: WSMessage
-                    if msg.type == aiohttp.WSMsgType.TEXT:
-                        await to_ws.send_str(msg.data)
-                    elif msg.type == aiohttp.WSMsgType.BINARY:
-                        await to_ws.send_bytes(msg.data)
-                    elif msg.type == aiohttp.WSMsgType.CLOSE:
-                        await to_ws.close()
-            except ClientConnectionResetError:
-                logging.info(f'connection reset {target_url}')
+                if not self.is_websocket_upgrade(request):
+                    async with session.request(
+                            request.method,
+                            target_url,
+                            headers=req_headers,
+                            params=request.query,
+                            data=await request.read(),
+                    ) as resp:
+                        resp_headers = resp.headers.copy()
+                        return web.Response(status=resp.status,
+                                            headers=resp_headers,
+                                            body=await resp.read())
+                else:
+                    target_ws = await session.ws_connect(target_url, headers=req_headers)
+            except ClientConnectorError as e:
+                logger.error(f'connect {target_url} failed: %s', str(type(e).__name__))
+                return web.Response(status=502, body='502 Bad Gateway')
 
-        try:
-            await asyncio.gather(join(req_ws, target_ws), join(target_ws, req_ws))
-        finally:
-            await asyncio.gather(session.close(), req_ws.close())
-        return req_ws
+            req_ws = web.WebSocketResponse()
+            await req_ws.prepare(request)  # 升级为ws
+
+            try:
+                await join_ws(req_ws, target_ws)
+            except ClientConnectorError:
+                logger.info(f'connection reset {request.url}')
+            return req_ws
 
 
 proxy = ProxyWOL(TargetHost('arch.tt', 8080, '7c:10:c9:9e:13:26', 'ssh kai@arch.tt'))
 
 
-async def get_app():
-    return proxy.app
+async def main():
+    if os.environ.get('SERVER_SOFTWARE', '').startswith('gunicorn'):
+        return proxy.app
+    else:
+        await proxy.serve('0.0.0.0', 8080)
 
 
 if __name__ == '__main__':
-    proxy.run('0.0.0.0', 8080)
+    loop = asyncio.new_event_loop()
+    loop.create_task(main())
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        loop.run_until_complete(proxy.app.shutdown())
