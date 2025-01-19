@@ -4,4 +4,9 @@ services:
     ports:
       - "7018:8080"
     restart: on-failure
+    environment:
+      - TARGET_HOST=arch.tt
+      - TARGET_PORT=3000
+      - TARGET_MAC=7c:10:c9:9e:13:26
+      - TARGET_SHELL_CMD="ssh kai@arch.tt"
     network_mode: host
