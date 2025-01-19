@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-PORT=${PORT:-8000}
+PORT=${PORT:-4321}
 TARGET_HOST=${TARGET_HOST:?TARGET_HOST is not set}
 TARGET_PORT=${TARGET_PORT:?TARGET_PORT is not set}
 TARGET_MAC=${TARGET_MAC:?TARGET_MAC is not set}

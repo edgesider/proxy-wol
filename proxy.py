@@ -11,7 +11,7 @@ from aiohttp.web_runner import AppRunner
 from aiohttp.web_ws import WebSocketResponse
 from wakeonlan import send_magic_packet
 
-TargetHost = namedtuple('TargetHost', ['host', 'port', 'mac', 'ssh_cmd'])
+TargetHost = namedtuple('TargetHost', ['host', 'port', 'agent_port', 'mac'])
 type WebSocket = WebSocketResponse | ClientWebSocketResponse
 
 logger = logging.Logger('proxy-wol', logging.DEBUG)
@@ -43,7 +43,7 @@ class ProxyWOL:
         for method in ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'CONNECT', 'HEAD']:
             self.app.router.add_route(method, '/{tail:.*}', self.handle_http)
 
-    async def serve(self, host='0.0.0.0', port=8080):
+    async def serve(self, host='0.0.0.0', port=4321):
         runner = AppRunner(self.app)
         await runner.setup()
         site = web.TCPSite(runner, host, port)
@@ -56,15 +56,18 @@ class ProxyWOL:
             return
         send_magic_packet(self.target.mac)
         self._last_wake_up_time = now
-        # noinspection PyAsyncCall
-        asyncio.create_task(self._keep_wake_up())
-        logger.info('send wol and keep wake up')
+        asyncio.create_task(self.touch_agent())  # 异步触发touch
+        logger.info('sent wol packet and touch agent')
 
-    async def _keep_wake_up(self):
-        proc = await asyncio.create_subprocess_shell(
-            f'{self.target.ssh_cmd} qdbus org.freedesktop.ScreenSaver /ScreenSaver SimulateUserActivity'
-        )
-        await proc.wait()
+    async def touch_agent(self):
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.request('GET', f'http://{self.target.host}:{self.target.agent_port}/touch') as resp:
+                    body = await resp.read()
+                    if resp.status != 200:
+                        logger.error(f'failed to touch agent: {body.decode()}')
+            except ClientConnectorError:
+                logger.error('cannot connect to wake agent')
 
     @staticmethod
     def is_websocket_upgrade(request: Request) -> bool:
@@ -109,8 +112,8 @@ class ProxyWOL:
 proxy = ProxyWOL(TargetHost(
     os.environ.get('TARGET_HOST'),
     int(os.environ.get('TARGET_PORT')),
+    int(os.environ.get('TARGET_AGENT_PORT')),
     os.environ.get('TARGET_MAC'),
-    os.environ.get('TARGET_SSH_CMD'),
 ))
 
 
@@ -118,7 +121,7 @@ async def main():
     if os.environ.get('SERVER_SOFTWARE', '').startswith('gunicorn'):
         return proxy.app
     else:
-        await proxy.serve('0.0.0.0', 8080)
+        await proxy.serve('0.0.0.0', 4321)
 
 
 if __name__ == '__main__':
