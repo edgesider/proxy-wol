@@ -5,7 +5,7 @@ import time
 from collections import namedtuple
 
 import aiohttp
-from aiohttp import web, WSMessage, ClientWebSocketResponse, ClientConnectorError
+from aiohttp import web, WSMessage, ClientWebSocketResponse, ClientConnectorError, ClientConnectionResetError
 from aiohttp.web_request import Request
 from aiohttp.web_runner import AppRunner
 from aiohttp.web_ws import WebSocketResponse
@@ -101,7 +101,7 @@ class ProxyWOL:
 
             try:
                 await join_ws(req_ws, target_ws)
-            except ClientConnectorError:
+            except (ClientConnectorError, ClientConnectionResetError):
                 logger.info(f'connection reset {request.url}')
             return req_ws
 
