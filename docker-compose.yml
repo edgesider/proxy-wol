@@ -8,5 +8,5 @@ services:
       - TARGET_HOST=arch.tt
       - TARGET_PORT=3000
       - TARGET_MAC=7c:10:c9:9e:13:26
-      - TARGET_SSH_CMD="ssh kai@arch.tt"
+      - TARGET_AGENT_PORT="4322"
     network_mode: host
