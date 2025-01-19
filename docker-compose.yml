@@ -1,7 +1,7 @@
 services:
   sd:
     image: proxy-wol
-    restart: on-failure
+    restart: unless-stopped
     environment:
       - PORT=7018
       - TARGET_HOST=arch.tt
@@ -12,7 +12,7 @@ services:
 
   open-webui:
     image: proxy-wol
-    restart: on-failure
+    restart: unless-stopped
     environment:
       - PORT=7019
       - TARGET_HOST=arch.tt
