@@ -110,7 +110,7 @@ proxy = ProxyWOL(TargetHost(
     os.environ.get('TARGET_HOST'),
     int(os.environ.get('TARGET_PORT')),
     os.environ.get('TARGET_MAC'),
-    os.environ.get('TARGET_SHELL_CMD'),
+    os.environ.get('TARGET_SSH_CMD'),
 ))
 
 

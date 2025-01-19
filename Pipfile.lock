@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "9549cfcace76b7c858ae7fe1c8567f7641ae831b58b6d7ec38d1a849ca08003e"
+            "sha256": "32d00dfcf2b51d34cd8bab1fde84a0518693ee70a8523480b36e7d808511a209"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -123,6 +123,15 @@
             ],
             "markers": "python_version >= '3.8'",
             "version": "==24.3.0"
+        },
+        "dbus-next": {
+            "hashes": [
+                "sha256:58948f9aff9db08316734c0be2a120f6dc502124d9642f55e90ac82ffb16a18b",
+                "sha256:f4eae26909332ada528c0a3549dda8d4f088f9b365153952a408e28023a626a5"
+            ],
+            "index": "pypi",
+            "markers": "python_full_version >= '3.6.0'",
+            "version": "==0.2.3"
         },
         "frozenlist": {
             "hashes": [
