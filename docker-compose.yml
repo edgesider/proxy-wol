@@ -1,0 +1,7 @@
+services:
+  proxy-wol:
+    image: proxy-wol
+    ports:
+      - "7018:8080"
+    restart: on-failure
+    network_mode: host

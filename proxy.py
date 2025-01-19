@@ -106,7 +106,12 @@ class ProxyWOL:
             return req_ws
 
 
-proxy = ProxyWOL(TargetHost('arch.tt', 8080, '7c:10:c9:9e:13:26', 'ssh kai@arch.tt'))
+proxy = ProxyWOL(TargetHost(
+    os.environ.get('TARGET_HOST'),
+    int(os.environ.get('TARGET_PORT')),
+    os.environ.get('TARGET_MAC'),
+    os.environ.get('TARGET_SHELL_CMD'),
+))
 
 
 async def main():
@@ -121,7 +126,5 @@ if __name__ == '__main__':
     loop.create_task(main())
     try:
         loop.run_forever()
-    except KeyboardInterrupt:
-        pass
     finally:
         loop.run_until_complete(proxy.app.shutdown())
