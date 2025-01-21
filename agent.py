@@ -20,6 +20,11 @@ async def get(_req: Request):
     return web.Response(status=200, body='success\n')
 
 
+@routers.get('/ping')
+async def ping(_req):
+    return web.Response(status=200, body='pong\n')
+
+
 if __name__ == '__main__':
     app = web.Application()
     app.add_routes(routers)
