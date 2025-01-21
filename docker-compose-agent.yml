@@ -1,0 +1,9 @@
+services:
+  proxy-wol-agent:
+    image: proxy-wol
+    restart: unless-stopped
+    ports:
+      - "4322:4322"
+    environment:
+      - RUN_AGENT=1
+      - PORT=4322

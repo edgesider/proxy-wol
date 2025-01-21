@@ -25,7 +25,13 @@ async def ping(_req):
     return web.Response(status=200, body='pong\n')
 
 
+app = web.Application()
+app.add_routes(routers)
+
+
+async def get_app():
+    return app
+
+
 if __name__ == '__main__':
-    app = web.Application()
-    app.add_routes(routers)
     web.run_app(app, port=4322)
