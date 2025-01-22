@@ -4,7 +4,7 @@ if test "$RUN_AGENT" = "1" || test "$RUN_AGENT" = "true"
 then
   PORT=${PORT:-4322}
 
-  cmd="gunicorn agent:get_app --worker-class aiohttp.GunicornWebWorker -b 0.0.0.0:$PORT --reuse-port --capture-output --access-logfile -"
+  cmd="gunicorn agent:get_app --worker-class aiohttp.GunicornWebWorker -b 0.0.0.0:$PORT --reuse-port --capture-output"
   echo $cmd
   $cmd
   exit 0

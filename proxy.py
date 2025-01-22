@@ -1,20 +1,20 @@
 import asyncio
-import logging
 import os
-import time
+import signal
 from collections import namedtuple
 
 import aiohttp
 from aiohttp import web, WSMessage, ClientWebSocketResponse, ClientConnectorError, ClientConnectionResetError
 from aiohttp.web_request import Request
+from aiohttp.web_response import Response
 from aiohttp.web_runner import AppRunner
 from aiohttp.web_ws import WebSocketResponse
-from wakeonlan import send_magic_packet
+
+from logger import logger
+from wake_monitor import WakeMonitor
 
 TargetHost = namedtuple('TargetHost', ['host', 'port', 'agent_port', 'mac'])
 type WebSocket = WebSocketResponse | ClientWebSocketResponse
-
-logger = logging.Logger('proxy-wol', logging.DEBUG)
 
 
 async def pipe_ws(from_ws: WebSocket, to_ws: WebSocket):
@@ -33,15 +33,18 @@ async def join_ws(ws1: WebSocket, ws2: WebSocket):
 
 
 class ProxyWOL:
-    target: TargetHost
-    app: web.Application
-    _last_wake_up_time = 0
 
     def __init__(self, target: TargetHost):
         self.target = target
         self.app = web.Application()
+        self.monitor = WakeMonitor(target.mac, f'{target.host}:{target.agent_port}')
         for method in ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'CONNECT', 'HEAD']:
             self.app.router.add_route(method, '/{tail:.*}', self.handle_http)
+
+        async def on_start(_):
+            self.monitor.start(asyncio.get_running_loop())
+
+        self.app.on_startup.append(on_start)
 
     async def serve(self, host='0.0.0.0', port=4321):
         runner = AppRunner(self.app)
@@ -50,24 +53,17 @@ class ProxyWOL:
         await site.start()
         logger.warning(f'Listening at http://{host}:{port}. Upstream is http://{self.target.host}:{self.target.port}')
 
-    async def _wakeup_and_keep(self):
-        now = time.time()
-        if now - self._last_wake_up_time < 30:
-            return
-        send_magic_packet(self.target.mac)
-        self._last_wake_up_time = now
-        asyncio.create_task(self.touch_agent())  # 异步触发touch
-        logger.info('sent wol packet and touch agent')
+    async def _wakeup_and_touch(self) -> bool:
+        if self.monitor.is_awake:
+            return True
 
-    async def touch_agent(self):
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.request('GET', f'http://{self.target.host}:{self.target.agent_port}/touch') as resp:
-                    body = await resp.read()
-                    if resp.status != 200:
-                        logger.error(f'failed to touch agent: {body.decode()}')
-            except ClientConnectorError:
-                logger.error('cannot connect to wake agent')
+        self.monitor.wakeup()
+        if not await self.monitor.wait_awake():
+            logger.warning('failed to wake up')
+            return False
+        asyncio.create_task(self.monitor.touch())  # 异步触发touch
+        logger.info('sent wol packet and touch agent')
+        return True
 
     @staticmethod
     def is_websocket_upgrade(request: Request) -> bool:
@@ -76,7 +72,8 @@ class ProxyWOL:
 
     async def handle_http(self, request: Request):
         target_url = f"http://{self.target.host}:{self.target.port}{request.rel_url}"
-        await self._wakeup_and_keep()
+        if not await self._wakeup_and_touch():
+            return Response(status=502, body='wake up failed')
         async with aiohttp.ClientSession() as session:
             req_headers = request.headers.copy()
             req_headers['Accept-Encoding'] = ''
@@ -125,9 +122,15 @@ async def main():
 
 
 if __name__ == '__main__':
+    def on_exit(loop: asyncio.EventLoop):
+        proxy.app.shutdown()
+        for task in asyncio.all_tasks():
+            task.cancel()
+        loop.call_soon(loop.stop)
+
+
     loop = asyncio.new_event_loop()
     loop.create_task(main())
-    try:
-        loop.run_forever()
-    finally:
-        loop.run_until_complete(proxy.app.shutdown())
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, on_exit, loop)
+    loop.run_forever()
