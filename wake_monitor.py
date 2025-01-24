@@ -25,13 +25,12 @@ class WakeMonitor:
     def start(self, loop: asyncio.AbstractEventLoop | None = None):
         if loop is None:
             loop = asyncio.new_event_loop()
-        self._check_task = loop.create_task(self._check(), name='wake-monitor-check')
-
         def on_done(task: asyncio.Task):
             ex = task.exception()
             if ex:
                 logger.error(f'monitor internal exception {ex.args}', exc_info=ex)
 
+        self._check_task = loop.create_task(self._check(), name='wake-monitor-check')
         self._check_task.add_done_callback(on_done)
 
     def stop(self):
@@ -94,11 +93,6 @@ class WakeMonitor:
         return True
 
 
-async def test(wm: WakeMonitor):
-    await wm.wakeup()
-    print('wait wakeup result', await wm.wait_awake())
-
-
 def on_exit(loop: asyncio.AbstractEventLoop):
     for task in asyncio.all_tasks():
         task.cancel()
@@ -112,7 +106,6 @@ def main():
 
     wm = WakeMonitor('7c:10:c9:9e:13:26', 'arch.tt:4322')
     loop.call_soon(wm.start)
-    loop.create_task(test(wm))
     loop.run_forever()
 
 
