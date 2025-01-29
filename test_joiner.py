@@ -6,6 +6,7 @@ from aiohttp import WSMessage, WSMsgType, web, ClientSession
 from aiohttp.web_runner import AppRunner
 
 from proxy import join_ws
+from utils import serve
 
 
 async def ainput(prompt: str = ""):
@@ -63,14 +64,6 @@ def serve_joiner():
 
     app.router.add_route('GET', '/ws', handle_ws)
     return app
-
-
-async def serve(app: web.Application, host='0.0.0.0', port=8080):
-    runner = AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, host, port)
-    await site.start()
-    logging.warning(f'Listening at http://{host}:{port}')
 
 
 async def main():
