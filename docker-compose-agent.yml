@@ -4,6 +4,10 @@ services:
     restart: unless-stopped
     ports:
       - "4322:4322"
+    user: 1000:1000
+    volumes:
+      - /run/user/1000/bus:/run/user/1000/bus
     environment:
       - RUN_AGENT=1
       - PORT=4322
+      - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
