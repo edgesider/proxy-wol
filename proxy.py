@@ -1,5 +1,7 @@
 import asyncio
 import os
+import signal
+from asyncio import get_running_loop
 from collections import namedtuple
 
 import aiohttp
@@ -8,7 +10,7 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
 from logger import logger
-from utils import serve, WebSocket, join_ws, install_on_exit, run_until
+from utils import serve, WebSocket, join_ws, run_until
 from wake_monitor import WakeMonitor
 
 TargetHost = namedtuple('TargetHost', ['host', 'port', 'agent_port', 'mac'])
@@ -115,6 +117,18 @@ class ProxyWOL:
 proxy: ProxyWOL | None = None
 
 
+# noinspection PyProtectedMember
+def dump_info(*args):
+    print(
+        f'Status: running\n' +
+        f'Target: {proxy.target}\n' +
+        f'Target is awake: {proxy.monitor.is_awake}\n' +
+        f'Last touch: {proxy.monitor._last_touch}\n' +
+        f'Active websockets: {len(proxy._active_conn)}\n'
+        f'Should keep awake: {proxy._keep_awake()}\n'
+    )
+
+
 async def main():
     global proxy
     proxy = ProxyWOL(TargetHost(
@@ -123,6 +137,10 @@ async def main():
         int(os.environ.get('TARGET_AGENT_PORT')),
         os.environ.get('TARGET_MAC'),
     ))
+
+    get_running_loop().add_signal_handler(signal.SIGUSR1, dump_info)
+
+    logger.info(f'PID={os.getpid()}')
     if os.environ.get('SERVER_SOFTWARE', '').startswith('gunicorn'):
         return proxy.app
     else:
