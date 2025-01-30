@@ -1,6 +1,6 @@
 import asyncio
-import signal
 import time
+import typing
 from asyncio import Future
 from typing import Callable
 
@@ -9,6 +9,7 @@ from aiohttp import ClientConnectorError, ClientSession, ClientTimeout
 from wakeonlan import send_magic_packet
 
 from logger import logger
+from utils import run_forever
 
 WAIT_AWAKE_TIMEOUT = 15
 IS_AWAKE_CHECK_INTERVAL = 1
@@ -36,11 +37,12 @@ class WakeMonitor:
         self._wakeup_waiters: set[Future] = set()
         self._should_awake = should_awake
 
-    def start(self, loop: asyncio.AbstractEventLoop | None = None):
-        if loop is None:
-            loop = asyncio.new_event_loop()
+    def start(self):
+        loop = asyncio.get_running_loop()
 
         def on_done(task: asyncio.Task):
+            if task.cancelled():
+                return
             ex = task.exception()
             if ex:
                 logger.error(f'monitor internal exception {ex.args}', exc_info=ex)
@@ -49,6 +51,7 @@ class WakeMonitor:
         self._check_task.add_done_callback(on_done)
         self._auto_wakeup_task = loop.create_task(self._auto_wakeup(), name='wake-monitor-auto-wakeup')
         self._auto_wakeup_task.add_done_callback(on_done)
+        logger.info('WakeMonitor started')
 
     def stop(self):
         if self._check_task:
@@ -139,15 +142,5 @@ def on_exit(loop: asyncio.AbstractEventLoop):
     loop.call_soon(loop.stop)
 
 
-def main():
-    loop = asyncio.new_event_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, on_exit, loop)
-
-    wm = WakeMonitor('7c:10:c9:9e:13:26', 'arch.tt:4322')
-    loop.call_soon(wm.start)
-    loop.run_forever()
-
-
 if __name__ == '__main__':
-    main()
+    run_forever(WakeMonitor('7c:10:c9:9e:13:26', 'arch.tt:4322').start)

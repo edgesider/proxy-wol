@@ -1,6 +1,5 @@
 import asyncio
 import os
-import signal
 from collections import namedtuple
 
 import aiohttp
@@ -9,7 +8,7 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
 from logger import logger
-from utils import serve, WebSocket, join_ws
+from utils import serve, WebSocket, join_ws, install_on_exit, run_until
 from wake_monitor import WakeMonitor
 
 TargetHost = namedtuple('TargetHost', ['host', 'port', 'agent_port', 'mac'])
@@ -35,7 +34,7 @@ class ProxyWOL:
         return len(self._active_conn) > 0
 
     async def _on_start(self, _):
-        self.monitor.start(asyncio.get_running_loop())
+        self.monitor.start()
 
     async def _on_shutdown(self, _):
         await self._session.close()
@@ -127,23 +126,9 @@ async def main():
     if os.environ.get('SERVER_SOFTWARE', '').startswith('gunicorn'):
         return proxy.app
     else:
-        host = '0.0.0.0'
-        port = 4321
-        await serve(proxy.app, host=host, port=port)
-        logger.warning(
-            f'Listening at http://{host}:{port}. Upstream is http://{proxy.target.host}:{proxy.target.port}')
+        logger.warning(f'Upstream is http://{proxy.target.host}:{proxy.target.port}')
+        await serve(proxy.app, host='0.0.0.0', port=4321)
 
 
 if __name__ == '__main__':
-    def on_exit(_):
-        proxy.app.shutdown()
-        for task in asyncio.all_tasks():
-            task.cancel()
-        loop.call_soon(loop.stop)
-
-
-    loop = asyncio.new_event_loop()
-    loop.create_task(main())
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, on_exit, loop)
-    loop.run_forever()
+    run_until(main(), lambda: proxy.app.shutdown())

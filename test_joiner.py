@@ -1,16 +1,10 @@
 import asyncio
-import logging
 
 import aiohttp
 from aiohttp import WSMessage, WSMsgType, web, ClientSession
-from aiohttp.web_runner import AppRunner
 
 from proxy import join_ws
-from utils import serve
-
-
-async def ainput(prompt: str = ""):
-    return await asyncio.to_thread(input, prompt)
+from utils import serve, run_until
 
 
 def is_websocket_upgrade(request: web.Request) -> bool:
@@ -18,7 +12,7 @@ def is_websocket_upgrade(request: web.Request) -> bool:
     return upgrade_header == 'websocket'
 
 
-def serve_echo():
+def serve_echo(keep=False):
     app = web.Application()
 
     async def handle_ws(request: web.Request):
@@ -30,16 +24,17 @@ def serve_echo():
             msg: WSMessage
             if msg.type == WSMsgType.TEXT:
                 await ws.send_str(msg.data)
-            # elif msg.type == WSMsgType.BINARY:
-            #     await ws.send_bytes(msg.data)
-            # elif msg.type == WSMsgType.CLOSE:
-            #     await ws.close()
-            # elif msg.type == WSMsgType.PING:
-            #     await ws.ping(msg.data)
-            # elif msg.type == WSMsgType.PONG:
-            #     await ws.pong(msg.data)
-        print('shutdown echo')
-        await app.shutdown()
+            elif msg.type == WSMsgType.BINARY:
+                await ws.send_bytes(msg.data)
+            elif msg.type == WSMsgType.CLOSE:
+                await ws.close()
+            elif msg.type == WSMsgType.PING:
+                await ws.ping(msg.data)
+            elif msg.type == WSMsgType.PONG:
+                await ws.pong(msg.data)
+        if not keep:
+            print('shutdown echo')
+            await app.shutdown()
         return ws
 
     app.router.add_route('GET', '/ws', handle_ws)
@@ -86,14 +81,12 @@ async def main():
             print('test pass, closing')
             await ws.close()
     await asyncio.sleep(1)  # wait for servers shutdown
+    print('main exit')
 
 
 if __name__ == '__main__':
-    loop = asyncio.new_event_loop()
-    g = asyncio.gather(
-        loop.create_task(serve(serve_echo(), port=8080), name='echo-server'),
-        loop.create_task(serve(serve_joiner(), port=8081), name='join-server'),
-        loop.create_task(main(), name='client'),
-        return_exceptions=True
-    )
-    loop.run_until_complete(g)
+    run_until(lambda: asyncio.gather(
+        asyncio.create_task(serve(serve_echo(False), port=8080), name='echo-server'),
+        asyncio.create_task(serve(serve_joiner(), port=8081), name='join-server'),
+        asyncio.create_task(main(), name='client'),
+    ))

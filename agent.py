@@ -6,6 +6,8 @@ from aiohttp import web
 from aiohttp.web import Request, RouteTableDef
 from dbus_next.aio import MessageBus
 
+from utils import serve, run_until
+
 routers = RouteTableDef()
 dbus: MessageBus | None = None
 
@@ -47,4 +49,4 @@ async def get_app():
 
 
 if __name__ == '__main__':
-    web.run_app(app, port=4322)
+    run_until(serve(app, port=4322))
