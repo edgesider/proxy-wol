@@ -1,4 +1,5 @@
 import asyncio
+import os
 import signal
 import sys
 from asyncio import Future, CancelledError
@@ -129,3 +130,22 @@ def run_until(awaitable: Awaitable | Callable[[], Awaitable], cleanup: CleanUpFu
         loop.run_until_complete(loop.create_task(_(), name='main-task'))
     except CancelledError:
         pass
+
+
+def get_env_int(key: str, default: int = None) -> int:
+    value = get_env(key, default=default)
+    return int(value)
+
+
+def get_env_bool(key: str, default: bool = None) -> bool:
+    value = get_env(key, default=default)
+    return value == '1' or value == 'true' or value == 'True'
+
+
+def get_env(key: str, default=None) -> str:
+    value = os.environ.get(key)
+    if value is not None:
+        return value
+    if default is not None:
+        return default
+    raise EnvironmentError(f'environment variable {key} is not set')

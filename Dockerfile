@@ -3,4 +3,4 @@ COPY . /app
 WORKDIR /app
 RUN pip install pipenv \
     && pipenv sync --system
-CMD "./entry.sh"
+CMD "gunicorn"

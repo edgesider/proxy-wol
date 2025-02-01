@@ -1,6 +1,5 @@
 import asyncio
 import time
-import typing
 from asyncio import Future
 from typing import Callable
 

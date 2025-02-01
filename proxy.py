@@ -10,7 +10,7 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
 from logger import logger
-from utils import serve, WebSocket, join_ws, run_until
+from utils import serve, WebSocket, join_ws, run_until, get_env, get_env_int
 from wake_monitor import WakeMonitor
 
 TargetHost = namedtuple('TargetHost', ['host', 'port', 'agent_port', 'mac'])
@@ -20,7 +20,9 @@ class ProxyWOL:
 
     def __init__(self, target: TargetHost):
         self.target = target
-        self.app = web.Application()
+        self.app = web.Application(
+            client_max_size=1024 ** 3, # 1G
+        )
         self.monitor = WakeMonitor(
             target.mac, f'{target.host}:{target.agent_port}',
             self._keep_awake
@@ -132,10 +134,10 @@ def dump_info(*args):
 async def main():
     global proxy
     proxy = ProxyWOL(TargetHost(
-        os.environ.get('TARGET_HOST'),
-        int(os.environ.get('TARGET_PORT')),
-        int(os.environ.get('TARGET_AGENT_PORT')),
-        os.environ.get('TARGET_MAC'),
+        get_env('TARGET_HOST'),
+        get_env_int('TARGET_PORT'),
+        get_env_int('TARGET_AGENT_PORT'),
+        get_env('TARGET_MAC'),
     ))
 
     get_running_loop().add_signal_handler(signal.SIGUSR1, dump_info)

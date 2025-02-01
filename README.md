@@ -2,4 +2,5 @@
 
 - [x] websocket 也会触发 touch
 - [x] wake monitor
-- [ ] content too large
+- [ ] 反代插件化
+- [ ] 多worker
