@@ -21,7 +21,7 @@ class ProxyWOL:
     def __init__(self, target: TargetHost):
         self.target = target
         self.app = web.Application(
-            client_max_size=1024 ** 3, # 1G
+            client_max_size=1024 ** 3,  # 1G
         )
         self.monitor = WakeMonitor(
             target.mac, f'{target.host}:{target.agent_port}',
@@ -121,13 +121,15 @@ proxy: ProxyWOL | None = None
 
 # noinspection PyProtectedMember
 def dump_info(*args):
-    print(
-        f'Status: running\n' +
-        f'Target: {proxy.target}\n' +
-        f'Target is awake: {proxy.monitor.is_awake}\n' +
-        f'Last touch: {proxy.monitor._last_touch}\n' +
-        f'Active websockets: {len(proxy._active_conn)}\n'
-        f'Should keep awake: {proxy._keep_awake()}\n'
+    logger.info(
+        '===\n' +
+        f'\tStatus: running\n' +
+        f'\tTarget: {proxy.target}\n' +
+        f'\tTarget is awake: {proxy.monitor.is_awake}\n' +
+        f'\tLast touch: {proxy.monitor._last_touch}\n' +
+        f'\tActive websockets: {len(proxy._active_conn)}\n'
+        f'\tShould keep awake: {proxy._keep_awake()}\n' +
+        '===\n'
     )
 
 
