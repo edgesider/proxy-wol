@@ -1,7 +1,7 @@
 services:
   proxy-wol-agent:
     image: proxy-wol
-    restart: unless-stopped
+    restart: always
     ports:
       - "4322:4322"
     user: 1000:1000
